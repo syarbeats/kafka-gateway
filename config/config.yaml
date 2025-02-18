@@ -1,0 +1,15 @@
+server:
+  address: ":8080"
+
+kafka:
+  brokers:
+    - "localhost:9092"
+  consumer_group: "kafka-gateway"
+  security_protocol: "PLAINTEXT"  # Options: PLAINTEXT, SASL_PLAINTEXT, SASL_SSL
+  sasl_mechanism: ""             # Options: PLAIN, SCRAM-SHA-256, SCRAM-SHA-512
+  sasl_username: ""
+  sasl_password: ""
+
+auth:
+  enabled: false
+  secret: ""  # This will be your API key for authorization
