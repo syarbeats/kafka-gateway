@@ -121,6 +121,68 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/topics/{topic}": {
+            "post": {
+                "description": "Create a new topic with specified partitions and replication factor",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "kafka"
+                ],
+                "summary": "Create a new Kafka topic",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Topic name",
+                        "name": "topic",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Topic configuration",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CreateTopicRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/topics/{topic}/partitions": {
             "get": {
                 "description": "Get partition information for a specific Kafka topic",
@@ -194,6 +256,25 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "handler.CreateTopicRequest": {
+            "type": "object",
+            "required": [
+                "numPartitions",
+                "replicationFactor"
+            ],
+            "properties": {
+                "numPartitions": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "example": 3
+                },
+                "replicationFactor": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "example": 1
+                }
+            }
+        },
         "handler.MessageRequest": {
             "type": "object",
             "required": [

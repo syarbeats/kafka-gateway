@@ -104,6 +104,20 @@ Response: {
 }
 ```
 
+### Create Topic
+```
+POST /api/v1/topics/{topic}
+Body: {
+  "numPartitions": 3,
+  "replicationFactor": 1
+}
+Response: {
+  "status": "success",
+  "message": "Topic created successfully",
+  "topic": "topic-name"
+}
+```
+
 ## Authentication
 
 When authentication is enabled, include the JWT token in the Authorization header:

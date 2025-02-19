@@ -86,6 +86,7 @@ func main() {
 			api.POST("/publish/:topic", handler.PublishMessage(kafkaClient))
 			api.GET("/topics", handler.ListTopics(kafkaClient))
 			api.GET("/topics/:topic/partitions", handler.GetTopicPartitions(kafkaClient))
+			api.POST("/topics/:topic", handler.CreateTopic(kafkaClient))
 		}
 	}
 

@@ -1,5 +1,19 @@
 basePath: /
 definitions:
+  handler.CreateTopicRequest:
+    properties:
+      numPartitions:
+        example: 3
+        minimum: 1
+        type: integer
+      replicationFactor:
+        example: 1
+        minimum: 1
+        type: integer
+    required:
+    - numPartitions
+    - replicationFactor
+    type: object
   handler.MessageRequest:
     properties:
       key:
@@ -87,6 +101,47 @@ paths:
               type: string
             type: object
       summary: List all Kafka topics
+      tags:
+      - kafka
+  /api/v1/topics/{topic}:
+    post:
+      consumes:
+      - application/json
+      description: Create a new topic with specified partitions and replication factor
+      parameters:
+      - description: Topic name
+        in: path
+        name: topic
+        required: true
+        type: string
+      - description: Topic configuration
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateTopicRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Create a new Kafka topic
       tags:
       - kafka
   /api/v1/topics/{topic}/partitions:
