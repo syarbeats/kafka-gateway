@@ -1,0 +1,96 @@
+syntax = "proto3";
+
+package kafka.gateway.v1;
+
+option go_package = "kafka-gateway/proto/kafka/gateway/v1;gatewayv1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/empty.proto";
+
+service KafkaGatewayService {
+  // Health check endpoint
+  rpc HealthCheck(google.protobuf.Empty) returns (HealthCheckResponse) {
+    option (google.api.http) = {
+      get: "/health"
+    };
+  }
+
+  // Publish message to Kafka topic
+  rpc PublishMessage(PublishMessageRequest) returns (PublishMessageResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/publish/{topic}"
+      body: "message"
+    };
+  }
+
+  // List all Kafka topics
+  rpc ListTopics(google.protobuf.Empty) returns (ListTopicsResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/topics"
+    };
+  }
+
+  // Get topic partitions
+  rpc GetTopicPartitions(GetTopicPartitionsRequest) returns (GetTopicPartitionsResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/topics/{topic}/partitions"
+    };
+  }
+
+  // Create a new Kafka topic
+  rpc CreateTopic(CreateTopicRequest) returns (CreateTopicResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/topics/{topic}"
+      body: "config"
+    };
+  }
+}
+
+message HealthCheckResponse {
+  string status = 1;
+}
+
+message Message {
+  string key = 1;
+  string value = 2;
+}
+
+message PublishMessageRequest {
+  string topic = 1;
+  Message message = 2;
+}
+
+message PublishMessageResponse {
+  string status = 1;
+  string message = 2;
+  string topic = 3;
+}
+
+message ListTopicsResponse {
+  repeated string topics = 1;
+}
+
+message GetTopicPartitionsRequest {
+  string topic = 1;
+}
+
+message GetTopicPartitionsResponse {
+  string topic = 1;
+  repeated int32 partitions = 2;
+}
+
+message TopicConfig {
+  int32 num_partitions = 1;
+  int32 replication_factor = 2;
+}
+
+message CreateTopicRequest {
+  string topic = 1;
+  TopicConfig config = 2;
+}
+
+message CreateTopicResponse {
+  string status = 1;
+  string message = 2;
+  string topic = 3;
+}

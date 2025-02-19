@@ -10,15 +10,20 @@ import (
 
 	_ "kafka-gateway/docs"
 	"kafka-gateway/internal/config"
+	grpcserver "kafka-gateway/internal/grpc"
 	"kafka-gateway/internal/handler"
 	"kafka-gateway/internal/kafka"
 	"kafka-gateway/internal/middleware"
+	pb "kafka-gateway/proto/gen"
 
 	"github.com/gin-gonic/gin"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // @title           Kafka Gateway API
@@ -50,6 +55,37 @@ func main() {
 		logger.Fatal("Failed to load configuration", zap.Error(err))
 	}
 
+	// Initialize Kafka client
+	var kafkaClient *kafka.Client
+	if client, err := kafka.NewClient(cfg.Kafka); err != nil {
+		logger.Warn("Failed to create Kafka client, API endpoints will not be functional", zap.Error(err))
+	} else {
+		kafkaClient = client
+		defer kafkaClient.Close()
+	}
+
+	// Start gRPC server
+	grpcAddr := ":9090" // gRPC server address
+	grpcServer := grpcserver.NewServer(kafkaClient)
+	go func() {
+		logger.Info("Starting gRPC server", zap.String("address", grpcAddr))
+		if err := grpcServer.Start(9090); err != nil {
+			logger.Fatal("Failed to start gRPC server", zap.Error(err))
+		}
+	}()
+
+	// Initialize gRPC-Gateway mux
+	ctx := context.Background()
+	gwmux := runtime.NewServeMux()
+
+	// Register gRPC-Gateway handlers
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	if err := pb.RegisterKafkaGatewayServiceHandlerFromEndpoint(
+		ctx, gwmux, grpcAddr, opts,
+	); err != nil {
+		logger.Fatal("Failed to register gateway handler", zap.Error(err))
+	}
+
 	// Initialize Gin router
 	router := gin.New()
 	router.Use(gin.Recovery())
@@ -70,16 +106,7 @@ func main() {
 	// Metrics endpoint
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
-	// Initialize Kafka client (optional for testing Swagger)
-	var kafkaClient *kafka.Client
-	if client, err := kafka.NewClient(cfg.Kafka); err != nil {
-		logger.Warn("Failed to create Kafka client, API endpoints will not be functional", zap.Error(err))
-	} else {
-		kafkaClient = client
-		defer kafkaClient.Close()
-	}
-
-	// API endpoints (only if Kafka client is available)
+	// Legacy REST API endpoints (only if Kafka client is available)
 	if kafkaClient != nil {
 		api := router.Group("/api/v1")
 		{
@@ -90,6 +117,9 @@ func main() {
 		}
 	}
 
+	// gRPC-Gateway endpoints
+	router.Any("/grpc/v1/*path", gin.WrapH(gwmux))
+
 	// Create HTTP server
 	srv := &http.Server{
 		Addr:    cfg.Server.Address,
@@ -98,7 +128,7 @@ func main() {
 
 	// Start server in a goroutine
 	go func() {
-		logger.Info("Starting server", zap.String("address", cfg.Server.Address))
+		logger.Info("Starting HTTP server", zap.String("address", cfg.Server.Address))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatal("Failed to start server", zap.Error(err))
 		}
@@ -110,7 +140,12 @@ func main() {
 	<-quit
 
 	// Graceful shutdown
-	logger.Info("Shutting down server...")
+	logger.Info("Shutting down servers...")
+
+	// Stop gRPC server
+	grpcServer.Stop()
+
+	// Shutdown HTTP server
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -118,5 +153,5 @@ func main() {
 		logger.Fatal("Server forced to shutdown", zap.Error(err))
 	}
 
-	logger.Info("Server exited")
+	logger.Info("Servers exited")
 }
