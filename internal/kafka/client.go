@@ -122,3 +122,20 @@ func (c *Client) GetTopicPartitions(topic string) ([]int32, error) {
 	}
 	return partitions, nil
 }
+
+func (c *Client) CreateTopic(topic string, numPartitions int32, replicationFactor int16) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	topicDetail := &sarama.TopicDetail{
+		NumPartitions:     numPartitions,
+		ReplicationFactor: replicationFactor,
+	}
+
+	err := c.admin.CreateTopic(topic, topicDetail, false)
+	if err != nil {
+		return fmt.Errorf("failed to create topic: %w", err)
+	}
+
+	return nil
+}

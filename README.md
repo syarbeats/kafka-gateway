@@ -1,145 +1,108 @@
 # Kafka Gateway
 
-A high-performance Apache Kafka gateway service written in Go that provides REST APIs for interacting with Kafka clusters.
+A dual REST/gRPC API gateway for Apache Kafka operations.
 
 ## Features
 
-- RESTful API for publishing messages to Kafka topics
-- Topic management endpoints
-- Authentication support
-- Prometheus metrics
-- Structured logging with Zap
+- REST and gRPC APIs for Kafka operations
+- Swagger/OpenAPI documentation
+- Metrics endpoint with Prometheus integration
 - Health check endpoint
-- SASL/SSL support for secure connections
-
-## Prerequisites
-
-- Go 1.21 or higher
-- Apache Kafka cluster
-- Docker (optional, for containerized deployment)
-
-## Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/kafka-gateway.git
-cd kafka-gateway
-```
-
-2. Install dependencies:
-```bash
-go mod download
-```
-
-3. Build the application:
-```bash
-go build -o kafka-gateway ./cmd/gateway
-```
-
-## Configuration
-
-Copy the example configuration file and modify it according to your needs:
-
-```bash
-cp config/config.yaml config/config.local.yaml
-```
-
-Configuration options:
-
-```yaml
-server:
-  address: ":8080"  # Server listen address
-
-kafka:
-  brokers:          # List of Kafka brokers
-    - "localhost:9092"
-  consumer_group: "kafka-gateway"
-  security_protocol: "PLAINTEXT"  # PLAINTEXT, SASL_PLAINTEXT, or SASL_SSL
-  sasl_mechanism: ""             # PLAIN, SCRAM-SHA-256, or SCRAM-SHA-512
-  sasl_username: ""
-  sasl_password: ""
-
-auth:
-  enabled: false    # Enable/disable authentication
-  secret: ""        # JWT secret key when auth is enabled
-```
+- Authentication support
+- Graceful shutdown
 
 ## API Endpoints
 
-### Health Check
-```
-GET /health
-Response: {"status": "healthy"}
+The service provides both REST and gRPC endpoints for the following operations:
+
+- Health check
+- Publish message to topic
+- List topics
+- Get topic partitions
+- Create topic
+
+### REST API
+
+REST endpoints are available at `http://localhost:8080/api/v1/`:
+
+- `GET /health` - Health check
+- `POST /api/v1/publish/{topic}` - Publish message to topic
+- `GET /api/v1/topics` - List topics
+- `GET /api/v1/topics/{topic}/partitions` - Get topic partitions
+- `POST /api/v1/topics/{topic}` - Create topic
+
+### gRPC API
+
+gRPC server runs on port 9090. You can use any gRPC client to interact with the service.
+
+Example using `grpcurl`:
+
+```bash
+# Health check
+grpcurl -plaintext localhost:9090 kafka.gateway.v1.KafkaGatewayService/HealthCheck
+
+# List topics
+grpcurl -plaintext localhost:9090 kafka.gateway.v1.KafkaGatewayService/ListTopics
+
+# Get topic partitions
+grpcurl -plaintext -d '{"topic": "my-topic"}' localhost:9090 kafka.gateway.v1.KafkaGatewayService/GetTopicPartitions
+
+# Create topic
+grpcurl -plaintext -d '{"topic": "my-topic", "config": {"numPartitions": 3, "replicationFactor": 1}}' localhost:9090 kafka.gateway.v1.KafkaGatewayService/CreateTopic
+
+# Publish message
+grpcurl -plaintext -d '{"topic": "my-topic", "message": {"key": "key1", "value": "Hello, Kafka!"}}' localhost:9090 kafka.gateway.v1.KafkaGatewayService/PublishMessage
 ```
 
-### Metrics
-```
-GET /metrics
-Response: Prometheus metrics
+## API Documentation
+
+Swagger UI is available at `http://localhost:8080/swagger/index.html`
+
+## Configuration
+
+Configuration is loaded from `config/config.yaml`. Example configuration:
+
+```yaml
+server:
+  address: ":8080"
+
+kafka:
+  brokers:
+    - "localhost:9092"
+  clientID: "kafka-gateway"
+
+auth:
+  enabled: false
+  apiKey: "your-api-key"
 ```
 
-### Publish Message
-```
-POST /api/v1/publish/{topic}
-Body: {
-  "key": "optional-message-key",
-  "value": "message-content"
-}
+## Development
+
+### Prerequisites
+
+- Go 1.22 or later
+- Protocol Buffers compiler (protoc)
+- Kafka cluster
+
+### Building
+
+```bash
+# Install tools
+make install-tools
+
+# Generate gRPC code
+make proto
+
+# Build the service
+go build -o kafka-gateway cmd/gateway/main.go
 ```
 
-### List Topics
-```
-GET /api/v1/topics
-Response: {
-  "topics": ["topic1", "topic2", ...]
-}
-```
+### Running
 
-### Get Topic Partitions
-```
-GET /api/v1/topics/{topic}/partitions
-Response: {
-  "topic": "topic-name",
-  "partitions": [0, 1, 2, ...]
-}
-```
-
-## Authentication
-
-When authentication is enabled, include the JWT token in the Authorization header:
-```
-Authorization: Bearer your-secret-token
+```bash
+./kafka-gateway
 ```
 
 ## Metrics
 
-The gateway exposes Prometheus metrics at the `/metrics` endpoint, including:
-- Total HTTP requests
-- HTTP request duration
-- Request status codes
-
-## Example Usage
-
-Publishing a message:
-```bash
-curl -X POST \
-  http://localhost:8080/api/v1/publish/my-topic \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "key": "user-123",
-    "value": "Hello, Kafka!"
-  }'
-```
-
-Listing topics:
-```bash
-curl http://localhost:8080/api/v1/topics
-```
-
-## License
-
-MIT License
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+Prometheus metrics are available at `http://localhost:8080/metrics`
