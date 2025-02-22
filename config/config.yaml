@@ -1,14 +1,16 @@
 server:
   address: ":8080"
+  tls:
+    enabled: true
+    ca_cert: "certs/ca/ca.crt"
+    server_cert: "certs/server/server.crt"
+    server_key: "certs/server/server.key"
 
 kafka:
   brokers:
     - "localhost:9092"
   consumer_group: "kafka-gateway"
-  security_protocol: "PLAINTEXT"  # Options: PLAINTEXT, SASL_PLAINTEXT, SASL_SSL
-  sasl_mechanism: ""             # Options: PLAIN, SCRAM-SHA-256, SCRAM-SHA-512
-  sasl_username: ""
-  sasl_password: ""
+  security_protocol: "PLAINTEXT"  # Options: PLAINTEXT, SASL_PLAINTEXT, SASL_SSL, SSL
 
 auth:
   enabled: false

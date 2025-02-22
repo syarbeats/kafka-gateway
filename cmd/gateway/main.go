@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"os/signal"
@@ -23,6 +26,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -40,6 +44,7 @@ import (
 
 // @host      localhost:8080
 // @BasePath  /
+// @schemes   https
 
 // @securityDefinitions.apikey ApiKeyAuth
 // @in header
@@ -66,7 +71,7 @@ func main() {
 
 	// Start gRPC server
 	grpcAddr := ":9090" // gRPC server address
-	grpcServer := grpcserver.NewServer(kafkaClient)
+	grpcServer := grpcserver.NewServer(kafkaClient, cfg)
 	go func() {
 		logger.Info("Starting gRPC server", zap.String("address", grpcAddr))
 		if err := grpcServer.Start(9090); err != nil {
@@ -78,8 +83,37 @@ func main() {
 	ctx := context.Background()
 	gwmux := runtime.NewServeMux()
 
-	// Register gRPC-Gateway handlers
-	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	// Register gRPC-Gateway handlers with TLS
+	var opts []grpc.DialOption
+	if cfg.Server.TLS.Enabled {
+		// Load CA certificate
+		caCert, err := ioutil.ReadFile(cfg.Server.TLS.CACert)
+		if err != nil {
+			logger.Fatal("Failed to read CA certificate", zap.Error(err))
+		}
+
+		certPool := x509.NewCertPool()
+		if !certPool.AppendCertsFromPEM(caCert) {
+			logger.Fatal("Failed to append CA certificate")
+		}
+
+		// Load client certificate and private key
+		cert, err := tls.LoadX509KeyPair(cfg.Server.TLS.ServerCert, cfg.Server.TLS.ServerKey)
+		if err != nil {
+			logger.Fatal("Failed to load client certificate", zap.Error(err))
+		}
+
+		// Create TLS credentials
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			RootCAs:      certPool,
+		}
+
+		opts = []grpc.DialOption{grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))}
+	} else {
+		opts = []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	}
+
 	if err := pb.RegisterKafkaGatewayServiceHandlerFromEndpoint(
 		ctx, gwmux, grpcAddr, opts,
 	); err != nil {
@@ -91,6 +125,7 @@ func main() {
 	router.Use(gin.Recovery())
 	router.Use(middleware.Logger(logger))
 	router.Use(middleware.Metrics())
+	router.Use(middleware.CORS())
 
 	// Add authentication middleware if enabled
 	if cfg.Auth.Enabled {
@@ -120,17 +155,48 @@ func main() {
 	// gRPC-Gateway endpoints
 	router.Any("/grpc/v1/*path", gin.WrapH(gwmux))
 
-	// Create HTTP server
+	// Create HTTPS server
 	srv := &http.Server{
 		Addr:    cfg.Server.Address,
 		Handler: router,
 	}
 
-	// Start server in a goroutine
+	// Configure TLS
+	if !cfg.Server.TLS.Enabled {
+		logger.Fatal("TLS must be enabled for secure operation")
+	}
+
+	// Load server certificate and key
+	cert, err := tls.LoadX509KeyPair(cfg.Server.TLS.ServerCert, cfg.Server.TLS.ServerKey)
+	if err != nil {
+		logger.Fatal("Failed to load server certificate", zap.Error(err))
+	}
+
+	// Load CA cert pool
+	caCert, err := ioutil.ReadFile(cfg.Server.TLS.CACert)
+	if err != nil {
+		logger.Fatal("Failed to read CA certificate", zap.Error(err))
+	}
+
+	caCertPool := x509.NewCertPool()
+	if !caCertPool.AppendCertsFromPEM(caCert) {
+		logger.Fatal("Failed to append CA certificate")
+	}
+
+	// Configure TLS
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		ClientCAs:    caCertPool,
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		MinVersion:   tls.VersionTLS12,
+	}
+	srv.TLSConfig = tlsConfig
+
+	// Start HTTPS server
 	go func() {
-		logger.Info("Starting HTTP server", zap.String("address", cfg.Server.Address))
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatal("Failed to start server", zap.Error(err))
+		logger.Info("Starting HTTPS server", zap.String("address", srv.Addr))
+		if err := srv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+			logger.Fatal("Failed to start HTTPS server", zap.Error(err))
 		}
 	}()
 
@@ -145,7 +211,7 @@ func main() {
 	// Stop gRPC server
 	grpcServer.Stop()
 
-	// Shutdown HTTP server
+	// Shutdown HTTPS server
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

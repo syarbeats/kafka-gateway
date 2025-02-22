@@ -1,12 +1,45 @@
 package kafka
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"io/ioutil"
 	"kafka-gateway/internal/config"
 	"sync"
+	"time"
 
 	"github.com/Shopify/sarama"
 )
+
+func createTLSConfig(tlsConfig *config.KafkaTLSConfig) (*tls.Config, error) {
+	if tlsConfig == nil {
+		return nil, fmt.Errorf("TLS config is required")
+	}
+
+	// Load client cert
+	cert, err := tls.LoadX509KeyPair("certs/client/client.crt", "certs/client/client.key")
+	if err != nil {
+		return nil, fmt.Errorf("failed to load client certificate: %w", err)
+	}
+
+	// Load CA cert
+	caCert, err := ioutil.ReadFile("certs/ca/ca.crt")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read CA certificate: %w", err)
+	}
+
+	caCertPool := x509.NewCertPool()
+	if !caCertPool.AppendCertsFromPEM(caCert) {
+		return nil, fmt.Errorf("failed to parse CA certificate")
+	}
+
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      caCertPool,
+		MinVersion:   tls.VersionTLS12,
+	}, nil
+}
 
 type Client struct {
 	config   *config.KafkaConfig
@@ -17,20 +50,27 @@ type Client struct {
 
 func NewClient(cfg config.KafkaConfig) (*Client, error) {
 	config := sarama.NewConfig()
+
+	// Producer configs
 	config.Producer.RequiredAcks = sarama.WaitForAll
 	config.Producer.Retry.Max = 5
 	config.Producer.Return.Successes = true
 
-	// Configure SASL if enabled
-	if cfg.SecurityProtocol == "SASL_SSL" || cfg.SecurityProtocol == "SASL_PLAINTEXT" {
-		config.Net.SASL.Enable = true
-		config.Net.SASL.User = cfg.SaslUsername
-		config.Net.SASL.Password = cfg.SaslPassword
-		config.Net.SASL.Mechanism = sarama.SASLMechanism(cfg.SaslMechanism)
+	// Connection configs
+	config.Net.DialTimeout = 10 * time.Second
+	config.Net.ReadTimeout = 10 * time.Second
+	config.Net.WriteTimeout = 10 * time.Second
+	config.Metadata.Retry.Max = 3
+	config.Metadata.Retry.Backoff = 1 * time.Second
 
-		if cfg.SecurityProtocol == "SASL_SSL" {
-			config.Net.TLS.Enable = true
+	// Configure TLS if enabled
+	if cfg.SecurityProtocol == "SSL" {
+		tlsConfig, err := createTLSConfig(cfg.TLS)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create TLS config: %w", err)
 		}
+		config.Net.TLS.Enable = true
+		config.Net.TLS.Config = tlsConfig
 	}
 
 	// Create producer
