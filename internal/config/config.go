@@ -11,16 +11,28 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Address string `mapstructure:"address"`
+	Address string    `mapstructure:"address"`
+	TLS     TLSConfig `mapstructure:"tls"`
+}
+
+type TLSConfig struct {
+	Enabled    bool   `mapstructure:"enabled"`
+	CACert     string `mapstructure:"ca_cert"`
+	ServerCert string `mapstructure:"server_cert"`
+	ServerKey  string `mapstructure:"server_key"`
 }
 
 type KafkaConfig struct {
-	Brokers          []string `mapstructure:"brokers"`
-	ConsumerGroup    string   `mapstructure:"consumer_group"`
-	SecurityProtocol string   `mapstructure:"security_protocol"`
-	SaslMechanism    string   `mapstructure:"sasl_mechanism"`
-	SaslUsername     string   `mapstructure:"sasl_username"`
-	SaslPassword     string   `mapstructure:"sasl_password"`
+	Brokers          []string        `mapstructure:"brokers"`
+	ConsumerGroup    string          `mapstructure:"consumer_group"`
+	SecurityProtocol string          `mapstructure:"security_protocol"`
+	TLS              *KafkaTLSConfig `mapstructure:"tls"`
+}
+
+type KafkaTLSConfig struct {
+	CACert     string `mapstructure:"ca_cert"`
+	ClientCert string `mapstructure:"client_cert"`
+	ClientKey  string `mapstructure:"client_key"`
 }
 
 type AuthConfig struct {
@@ -36,6 +48,10 @@ func Load() (*Config, error) {
 
 	// Set defaults
 	viper.SetDefault("server.address", ":8080")
+	viper.SetDefault("server.tls.enabled", false)
+	viper.SetDefault("server.tls.ca_cert", "certs/ca/ca.crt")
+	viper.SetDefault("server.tls.server_cert", "certs/server/server.crt")
+	viper.SetDefault("server.tls.server_key", "certs/server/server.key")
 	viper.SetDefault("kafka.brokers", []string{"localhost:9092"})
 	viper.SetDefault("kafka.consumer_group", "kafka-gateway")
 	viper.SetDefault("kafka.security_protocol", "PLAINTEXT")

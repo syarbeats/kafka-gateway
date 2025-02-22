@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Swagger UI with mTLS</title>
+    <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.18.3/swagger-ui.css" />
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: sans-serif;
+        }
+        .topbar {
+            display: none;
+        }
+        #instructions {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div id="instructions">
+        <h2>Before using Swagger UI:</h2>
+        <ol>
+            <li>Import CA certificate (certs/ca/ca.crt) into your browser's trusted root certificates</li>
+            <li>Import client certificate (certs/client/client.p12) into your browser</li>
+            <li>Make sure the Kafka Gateway server is running with mTLS enabled</li>
+        </ol>
+    </div>
+    <div id="swagger-ui"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.18.3/swagger-ui-bundle.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.18.3/swagger-ui-standalone-preset.js"></script>
+    <script>
+        window.onload = function() {
+            const ui = SwaggerUIBundle({
+                url: "https://localhost:8080/swagger/doc.json",
+                dom_id: '#swagger-ui',
+                deepLinking: true,
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIStandalonePreset
+                ],
+                plugins: [
+                    SwaggerUIBundle.plugins.DownloadUrl
+                ],
+                requestInterceptor: (req) => {
+                    // Enable sending client certificates
+                    req.credentials = 'include';
+                    // Add CORS headers
+                    req.headers = req.headers || {};
+                    req.headers['Access-Control-Allow-Origin'] = '*';
+                    return req;
+                },
+                responseInterceptor: (res) => {
+                    // Handle CORS in response
+                    if (res.headers) {
+                        res.headers['Access-Control-Allow-Origin'] = '*';
+                    }
+                    return res;
+                }
+            });
+            window.ui = ui;
+        };
+    </script>
+</body>
+</html>

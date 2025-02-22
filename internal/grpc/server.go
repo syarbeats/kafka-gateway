@@ -2,12 +2,17 @@ package grpc
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"io/ioutil"
+	"kafka-gateway/internal/config"
 	"kafka-gateway/internal/kafka"
 	pb "kafka-gateway/proto/gen"
 	"net"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -16,13 +21,45 @@ type Server struct {
 	pb.UnimplementedKafkaGatewayServiceServer
 	kafkaClient *kafka.Client
 	grpcServer  *grpc.Server
+	config      *config.Config
 }
 
-func NewServer(kafkaClient *kafka.Client) *Server {
-	grpcServer := grpc.NewServer()
+func NewServer(kafkaClient *kafka.Client, cfg *config.Config) *Server {
+	var opts []grpc.ServerOption
+
+	if cfg.Server.TLS.Enabled {
+		// Load CA certificate
+		caCert, err := ioutil.ReadFile(cfg.Server.TLS.CACert)
+		if err != nil {
+			panic(fmt.Sprintf("failed to read CA certificate: %v", err))
+		}
+
+		certPool := x509.NewCertPool()
+		if !certPool.AppendCertsFromPEM(caCert) {
+			panic("failed to append CA certificate")
+		}
+
+		// Load server certificate and private key
+		cert, err := tls.LoadX509KeyPair(cfg.Server.TLS.ServerCert, cfg.Server.TLS.ServerKey)
+		if err != nil {
+			panic(fmt.Sprintf("failed to load server certificate and key: %v", err))
+		}
+
+		// Create TLS credentials
+		tlsConfig := &tls.Config{
+			ClientAuth:   tls.RequireAndVerifyClientCert,
+			Certificates: []tls.Certificate{cert},
+			ClientCAs:    certPool,
+		}
+
+		opts = append(opts, grpc.Creds(credentials.NewTLS(tlsConfig)))
+	}
+
+	grpcServer := grpc.NewServer(opts...)
 	server := &Server{
 		kafkaClient: kafkaClient,
 		grpcServer:  grpcServer,
+		config:      cfg,
 	}
 	pb.RegisterKafkaGatewayServiceServer(grpcServer, server)
 	reflection.Register(grpcServer)
