@@ -1,17 +1,19 @@
 # Kafka Gateway
 
-A dual REST/gRPC API gateway for Apache Kafka operations.
+A dual REST/gRPC API gateway for Apache Kafka operations with message persistence.
+
+*Last updated: February 25, 2025*
 
 ## Features
 
 - REST and gRPC APIs for Apache Kafka operations
+- SQLite persistence for storing and retrieving Kafka messages
 - Mutual TLS (mTLS) authentication for all endpoints
 - Swagger/OpenAPI documentation (mTLS protected)
 - Metrics endpoint with Prometheus integration
 - Health check endpoint
 - Authentication support
 - Graceful shutdown
-
 ## API Endpoints
 
 The service provides both REST and gRPC endpoints for the following operations:
@@ -21,6 +23,7 @@ The service provides both REST and gRPC endpoints for the following operations:
 - List topics
 - Get topic partitions
 - Create topic
+- Retrieve stored messages (SQLite persistence)
 
 ### REST API
 
@@ -31,6 +34,7 @@ REST endpoints are available at `https://localhost:8080/api/v1/` (requires mTLS)
 - `GET /api/v1/topics` - List topics
 - `GET /api/v1/topics/{topic}/partitions` - Get topic partitions
 - `POST /api/v1/topics/{topic}` - Create topic
+- `GET /api/v1/messages/{topic}` - Retrieve stored messages for a topic
 
 ### gRPC API
 
@@ -53,6 +57,8 @@ grpcurl -cert certs/client/client.crt -key certs/client/client.key -cacert certs
 
 # Publish message
 grpcurl -cert certs/client/client.crt -key certs/client/client.key -cacert certs/ca/ca.crt -d '{"topic": "my-topic", "message": {"key": "key1", "value": "Hello, Kafka!"}}' localhost:9090 kafka.gateway.v1.KafkaGatewayService/PublishMessage
+
+# Note: Retrieving stored messages is currently only available via the REST API
 ```
 
 ## API Documentation
@@ -114,7 +120,79 @@ kafka:
 auth:
   enabled: false
   secret: ""
+
+storage:
+  sqlite:
+    enabled: true
+    db_path: "./data/messages.db"
+    table_name: "kafka_messages"
 ```
+
+## Message Persistence
+
+The service includes SQLite persistence for storing and retrieving Kafka messages. When enabled, all published messages are automatically stored in a SQLite database.
+
+### Configuration
+
+SQLite persistence is configured in the `storage.sqlite` section of the configuration file:
+
+```yaml
+storage:
+  sqlite:
+    enabled: true                  # Enable/disable SQLite persistence
+    db_path: "./data/messages.db"  # Path to SQLite database file
+    table_name: "kafka_messages"   # Table name for storing messages
+```
+
+### Retrieving Stored Messages
+
+Stored messages can be retrieved using the REST API:
+
+```bash
+# Retrieve messages for a topic (requires mTLS)
+curl --cert certs/client/client.crt --key certs/client/client.key --cacert certs/ca/ca.crt \
+  https://localhost:8080/api/v1/messages/my-topic
+
+# With pagination
+curl --cert certs/client/client.crt --key certs/client/client.key --cacert certs/ca/ca.crt \
+  "https://localhost:8080/api/v1/messages/my-topic?limit=10&offset=0"
+```
+
+The response includes the messages with their metadata:
+
+```json
+{
+  "topic": "my-topic",
+  "messages": [
+    {
+      "id": 1,
+      "topic": "my-topic",
+      "key": "user-123",
+      "value": "Hello, Kafka!",
+      "partition": 0,
+      "offset": 0,
+      "timestamp": "2025-02-25T16:30:00Z"
+    }
+  ],
+  "count": 1,
+  "limit": 100,
+  "offset": 0
+}
+```
+
+### Testing Persistence
+
+A test utility is provided to verify SQLite persistence functionality:
+
+```bash
+# Run the SQLite persistence test
+go run tests/test_sqlite_persistence.go
+```
+
+This test:
+1. Publishes a test message to a Kafka topic
+2. Retrieves the stored message from SQLite
+3. Verifies the message content matches what was sent
 
 ## Development
 
@@ -124,6 +202,7 @@ auth:
 - Protocol Buffers compiler (protoc)
 - Kafka cluster
 - OpenSSL (for generating certificates)
+- SQLite (included via the pure Go implementation: modernc.org/sqlite)
 
 ### Certificate Generation
 
