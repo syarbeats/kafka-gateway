@@ -5,9 +5,10 @@ import (
 )
 
 type Config struct {
-	Server ServerConfig `mapstructure:"server"`
-	Kafka  KafkaConfig  `mapstructure:"kafka"`
-	Auth   AuthConfig   `mapstructure:"auth"`
+	Server  ServerConfig  `mapstructure:"server"`
+	Kafka   KafkaConfig   `mapstructure:"kafka"`
+	Auth    AuthConfig    `mapstructure:"auth"`
+	Storage StorageConfig `mapstructure:"storage"`
 }
 
 type ServerConfig struct {
@@ -40,6 +41,16 @@ type AuthConfig struct {
 	Secret  string `mapstructure:"secret"`
 }
 
+type StorageConfig struct {
+	SQLite SQLiteConfig `mapstructure:"sqlite"`
+}
+
+type SQLiteConfig struct {
+	Enabled   bool   `mapstructure:"enabled"`
+	DBPath    string `mapstructure:"db_path"`
+	TableName string `mapstructure:"table_name"`
+}
+
 func Load() (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
@@ -56,6 +67,9 @@ func Load() (*Config, error) {
 	viper.SetDefault("kafka.consumer_group", "kafka-gateway")
 	viper.SetDefault("kafka.security_protocol", "PLAINTEXT")
 	viper.SetDefault("auth.enabled", false)
+	viper.SetDefault("storage.sqlite.enabled", true)
+	viper.SetDefault("storage.sqlite.db_path", "./data/messages.db")
+	viper.SetDefault("storage.sqlite.table_name", "kafka_messages")
 
 	// Read configuration
 	if err := viper.ReadInConfig(); err != nil {

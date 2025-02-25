@@ -17,6 +17,7 @@ import (
 	"kafka-gateway/internal/handler"
 	"kafka-gateway/internal/kafka"
 	"kafka-gateway/internal/middleware"
+	"kafka-gateway/internal/storage"
 	pb "kafka-gateway/proto/gen"
 
 	"github.com/gin-gonic/gin"
@@ -60,9 +61,25 @@ func main() {
 		logger.Fatal("Failed to load configuration", zap.Error(err))
 	}
 
+	// Initialize SQLite store if enabled
+	var sqliteStore *storage.SQLiteStore
+	if cfg.Storage.SQLite.Enabled {
+		logger.Info("Initializing SQLite storage")
+		if store, err := storage.NewSQLiteStore(cfg.Storage.SQLite); err != nil {
+			logger.Warn("Failed to initialize SQLite storage, message persistence will be disabled", zap.Error(err))
+		} else {
+			sqliteStore = store
+			logger.Info("SQLite storage initialized successfully",
+				zap.String("db_path", cfg.Storage.SQLite.DBPath),
+				zap.String("table", cfg.Storage.SQLite.TableName))
+		}
+	} else {
+		logger.Info("SQLite storage is disabled")
+	}
+
 	// Initialize Kafka client
 	var kafkaClient *kafka.Client
-	if client, err := kafka.NewClient(cfg.Kafka); err != nil {
+	if client, err := kafka.NewClient(cfg.Kafka, sqliteStore); err != nil {
 		logger.Warn("Failed to create Kafka client, API endpoints will not be functional", zap.Error(err))
 	} else {
 		kafkaClient = client
@@ -149,6 +166,11 @@ func main() {
 			api.GET("/topics", handler.ListTopics(kafkaClient))
 			api.GET("/topics/:topic/partitions", handler.GetTopicPartitions(kafkaClient))
 			api.POST("/topics/:topic", handler.CreateTopic(kafkaClient))
+
+			// Add endpoint to retrieve stored messages if SQLite is enabled
+			if kafkaClient.GetStore() != nil {
+				api.GET("/messages/:topic", handler.GetStoredMessages(kafkaClient))
+			}
 		}
 	}
 

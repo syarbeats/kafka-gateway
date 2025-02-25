@@ -4,6 +4,7 @@ import (
 	"io"
 	"kafka-gateway/internal/kafka"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -164,6 +165,76 @@ func CreateTopic(client *kafka.Client) gin.HandlerFunc {
 			"status":  "success",
 			"message": "Topic created successfully",
 			"topic":   topic,
+		})
+	}
+}
+
+// @Summary Get stored messages for a topic
+// @Description Retrieve messages that have been stored in SQLite for a specific topic
+// @Tags kafka
+// @Produce json
+// @Param topic path string true "Topic name"
+// @Param limit query int false "Maximum number of messages to return (default 100)"
+// @Param offset query int false "Offset for pagination (default 0)"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/v1/messages/{topic} [get]
+func GetStoredMessages(client *kafka.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Check if SQLite store is available
+		if client.GetStore() == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Message storage is not available"})
+			return
+		}
+
+		topic := c.Param("topic")
+		if topic == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "topic is required"})
+			return
+		}
+
+		// Parse query parameters
+		limitStr := c.DefaultQuery("limit", "100")
+		offsetStr := c.DefaultQuery("offset", "0")
+
+		limit, err := strconv.Atoi(limitStr)
+		if err != nil || limit <= 0 {
+			limit = 100
+		}
+
+		offset, err := strconv.Atoi(offsetStr)
+		if err != nil || offset < 0 {
+			offset = 0
+		}
+
+		// Get messages from SQLite
+		messages, err := client.GetStore().GetMessagesByTopic(topic, limit, offset)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Format messages for response
+		formattedMessages := make([]map[string]interface{}, 0, len(messages))
+		for _, msg := range messages {
+			formattedMessages = append(formattedMessages, map[string]interface{}{
+				"id":        msg.ID,
+				"topic":     msg.Topic,
+				"key":       string(msg.Key),
+				"value":     string(msg.Value),
+				"partition": msg.Partition,
+				"offset":    msg.Offset,
+				"timestamp": msg.Timestamp,
+			})
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"topic":    topic,
+			"messages": formattedMessages,
+			"count":    len(messages),
+			"limit":    limit,
+			"offset":   offset,
 		})
 	}
 }

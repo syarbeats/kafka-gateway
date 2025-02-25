@@ -15,3 +15,9 @@ kafka:
 auth:
   enabled: false
   secret: ""  # This will be your API key for authorization
+
+storage:
+  sqlite:
+    enabled: true
+    db_path: "./data/messages.db"
+    table_name: "kafka_messages"

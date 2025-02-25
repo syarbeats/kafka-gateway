@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"kafka-gateway/internal/config"
+	"kafka-gateway/internal/storage"
 	"sync"
 	"time"
 
@@ -46,9 +47,10 @@ type Client struct {
 	producer sarama.SyncProducer
 	admin    sarama.ClusterAdmin
 	mu       sync.RWMutex
+	store    *storage.SQLiteStore
 }
 
-func NewClient(cfg config.KafkaConfig) (*Client, error) {
+func NewClient(cfg config.KafkaConfig, store *storage.SQLiteStore) (*Client, error) {
 	config := sarama.NewConfig()
 
 	// Producer configs
@@ -90,6 +92,7 @@ func NewClient(cfg config.KafkaConfig) (*Client, error) {
 		config:   &cfg,
 		producer: producer,
 		admin:    admin,
+		store:    store,
 	}, nil
 }
 
@@ -103,6 +106,14 @@ func (c *Client) Close() error {
 	if err := c.admin.Close(); err != nil {
 		return fmt.Errorf("failed to close admin client: %w", err)
 	}
+
+	// Close SQLite store if it exists
+	if c.store != nil {
+		if err := c.store.Close(); err != nil {
+			return fmt.Errorf("failed to close SQLite store: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -121,6 +132,14 @@ func (c *Client) PublishMessage(topic string, key []byte, value []byte) error {
 	partition, offset, err := c.producer.SendMessage(msg)
 	if err != nil {
 		return fmt.Errorf("failed to publish message: %w", err)
+	}
+
+	// Save message to SQLite if storage is enabled
+	if c.store != nil {
+		if err := c.store.SaveMessage(topic, key, value, partition, offset); err != nil {
+			// Log the error but don't fail the publish operation
+			fmt.Printf("Warning: Failed to save message to SQLite: %v\n", err)
+		}
 	}
 
 	fmt.Printf("Message published to topic %s, partition %d, offset %d\n", topic, partition, offset)
@@ -178,4 +197,11 @@ func (c *Client) CreateTopic(topic string, numPartitions int32, replicationFacto
 	}
 
 	return nil
+}
+
+// GetStore returns the SQLite store instance
+func (c *Client) GetStore() *storage.SQLiteStore {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.store
 }
